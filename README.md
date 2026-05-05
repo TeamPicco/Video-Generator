@@ -1,36 +1,110 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Steakhouse Video AI — Cinematic Content Generator
 
-## Getting Started
+KI-gestützter Video-Generator für Premium-Steakhouse Marketing. Erstellt vollautomatisch cinematic Instagram Reels (9:16, 1080×1920) mit Storyboard, Szenen, Voice-Over und Schnitt.
 
-First, run the development server:
+---
+
+## Features
+
+- **6 Templates**: Perfektes Steak, Dinner-Atmosphäre, Chef at Work, Special Offer, Event-Promo, Online-Gutschein
+- **KI-Pipeline**: Claude (Storyboard) → Flux Pro (Keyframes) → Runway Gen-4 (Video) → ElevenLabs (Voice-Over) → FFmpeg (Schnitt)
+- **Runway Fallback**: Automatisch Kling AI wenn Runway nicht verfügbar
+- **Brand-System**: Restaurant-Name, CTA-Links, Dark-Theme mit Gold-Akzenten
+- **Auth**: Supabase Auth (E-Mail/Passwort)
+- **Ratelimit**: 10 Videos/Tag, 30 Tage Speicher
+- **Output**: MP4, 9:16, 1080×1920, 15–30 Sekunden
+
+---
+
+## Setup
+
+### 1. Dependencies installieren
+
+```bash
+npm install
+```
+
+### 2. API-Keys beschaffen
+
+| API | Wo besorgen |
+|---|---|
+| **Anthropic Claude** | console.anthropic.com |
+| **Supabase** | supabase.com → Neues Projekt erstellen |
+| **Flux Pro** | api.us1.bfl.ai (Black Forest Labs) |
+| **Runway Gen-4** | app.runwayml.com → API-Zugang |
+| **Kling AI** | klingai.com → API |
+| **ElevenLabs** | elevenlabs.io → Profil → API Keys |
+
+### 3. Umgebungsvariablen setzen
+
+```bash
+cp .env.example .env.local
+# .env.local mit deinen Keys befüllen
+```
+
+### 4. Supabase Schema einrichten
+
+1. Supabase Dashboard öffnen → SQL Editor
+2. Inhalt von `lib/supabase/schema.sql` einfügen und ausführen
+3. Storage Buckets werden automatisch erstellt
+
+### 5. Lokal starten
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App läuft auf http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deployment (Vercel)
 
-## Learn More
+```bash
+npm i -g vercel
+vercel --prod
+```
 
-To learn more about Next.js, take a look at the following resources:
+Umgebungsvariablen im Vercel Dashboard unter Settings → Environment Variables eintragen.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Architektur
 
-## Deploy on Vercel
+```
+app/
+├── api/
+│   ├── storyboard/        # Claude Storyboard-Generator
+│   ├── generate-video/    # Video-Pipeline (Init + SSE Stream)
+│   ├── assemble-video/    # FFmpeg Schnitt
+│   ├── brand-settings/    # Brand-Konfiguration
+│   └── projects/          # Projektverwaltung
+├── dashboard/
+│   ├── create/            # Video-Erstellung (3-Step Flow)
+│   ├── library/           # Video-Bibliothek
+│   ├── brand/             # Brand & CTA Settings
+│   └── settings/          # System-Einstellungen
+└── auth/                  # Login / Registrierung
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+lib/
+├── ai/
+│   ├── claude.ts          # Storyboard-Generierung
+│   ├── flux.ts            # Keyframe-Bilder
+│   ├── runway.ts          # Video-Clips (+ Kling Fallback)
+│   └── elevenlabs.ts      # Voice-Over
+└── video/
+    └── pipeline.ts        # End-to-End Pipeline
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Tech Stack
+
+- **Frontend**: Next.js 15 App Router, React, Tailwind CSS, Framer Motion
+- **KI Video**: Runway Gen-4 + Kling AI Fallback
+- **KI Bild**: Flux Pro (Black Forest Labs)
+- **KI Text**: Anthropic Claude Sonnet
+- **Audio**: ElevenLabs Multilingual v2
+- **Video-Schnitt**: FFmpeg (server-side)
+- **Datenbank**: Supabase (PostgreSQL + Storage)
+- **Auth**: Supabase Auth
