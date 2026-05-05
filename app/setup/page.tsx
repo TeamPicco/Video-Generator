@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, ExternalLink } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Check, ExternalLink, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 const KEY_GROUPS = [
   {
@@ -44,6 +45,7 @@ const REQUIRED = ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', '
 
 export default function SetupPage() {
   const [values, setValues] = useState<Record<string, string>>({})
+  const [visible, setVisible] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -115,11 +117,19 @@ export default function SetupPage() {
                         <Input
                           label={key.label}
                           placeholder={key.placeholder}
-                          type="password"
+                          type={visible[key.name] ? 'text' : 'password'}
+                          autoComplete="off"
                           value={values[key.name] || ''}
                           onChange={(e) => setValues((v) => ({ ...v, [key.name]: e.target.value }))}
                         />
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setVisible((v) => ({ ...v, [key.name]: !v[key.name] }))}
+                        className="p-2.5 mb-0.5 rounded-lg border border-[#2a2a2a] text-[#888] hover:text-[#c9a84c] hover:border-[#c9a84c33] transition-all shrink-0"
+                      >
+                        {visible[key.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                       <a
                         href={key.link}
                         target="_blank"

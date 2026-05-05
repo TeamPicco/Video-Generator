@@ -10,6 +10,9 @@ import { promisify } from 'util'
 const execAsync = promisify(exec)
 export const maxDuration = 300
 
+const FFMPEG = process.env.FFMPEG_PATH ||
+  path.join(process.cwd(), 'bin', 'ffmpeg')
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -47,12 +50,19 @@ export async function POST(req: NextRequest) {
     // Assemble with FFmpeg: concat clips + voiceover + text overlays
     const outputPath = path.join(tmpDir, 'output.mp4')
 
-    // Build drawtext filters for hook and CTA
-    const hookFilter = `drawtext=text='${hook.replace(/'/g, "\\'")}':fontsize=52:fontcolor=white:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:x=(w-text_w)/2:y=h*0.12:enable='between(t,0,4)':box=1:boxcolor=black@0.4:boxborderw=12`
-    const ctaFilter = `drawtext=text='${ctaText.replace(/'/g, "\\'")}':fontsize=44:fontcolor=#c9a84c:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:x=(w-text_w)/2:y=h*0.85:enable='gte(t,${scenes.length > 0 ? scenes.reduce((s: number, sc: { duration: number }) => s + sc.duration, 0) - 4 : 10})':box=1:boxcolor=black@0.5:boxborderw=10`
+    // macOS system font fallback
+    const fontFile = fs.existsSync('/System/Library/Fonts/Helvetica.ttc')
+      ? '/System/Library/Fonts/Helvetica.ttc'
+      : fs.existsSync('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+      ? '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+      : ''
+
+    const fontParam = fontFile ? `:fontfile='${fontFile}'` : ''
+    const hookFilter = `drawtext=text='${hook.replace(/'/g, "\\'")}':fontsize=52:fontcolor=white${fontParam}:x=(w-text_w)/2:y=h*0.12:enable='between(t,0,4)':box=1:boxcolor=black@0.4:boxborderw=12`
+    const ctaFilter = `drawtext=text='${ctaText.replace(/'/g, "\\'")}':fontsize=44:fontcolor=#c9a84c${fontParam}:x=(w-text_w)/2:y=h*0.85:enable='gte(t,${scenes.length > 0 ? scenes.reduce((s: number, sc: { duration: number }) => s + sc.duration, 0) - 4 : 10})':box=1:boxcolor=black@0.5:boxborderw=10`
 
     const ffmpegCmd = [
-      'ffmpeg -y',
+      `"${FFMPEG}" -y`,
       `-f concat -safe 0 -i "${concatListPath}"`,
       `-i "${voiceoverPath}"`,
       '-filter_complex',
