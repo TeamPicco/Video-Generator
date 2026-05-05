@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
@@ -10,27 +9,31 @@ import { promisify } from 'util'
 const execAsync = promisify(exec)
 export const maxDuration = 300
 
-const FFMPEG = process.env.FFMPEG_PATH ||
-  path.join(process.cwd(), 'bin', 'ffmpeg')
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const FFMPEG = process.env.FFMPEG_PATH || path.join(process.cwd(), 'bin', 'ffmpeg')
 
 async function downloadFile(url: string, destPath: string): Promise<void> {
-  const response = await axios.get(url, { responseType: 'arraybuffer' })
+  const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 60000 })
   fs.writeFileSync(destPath, Buffer.from(response.data))
+}
+
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !url.startsWith('http') || url.includes('your_') || !key || key.includes('your_')) {
+    return null
+  }
+  const { createClient } = require('@supabase/supabase-js')
+  return createClient(url, key)
 }
 
 export async function POST(req: NextRequest) {
   const { projectId, videoId, userId, clipUrls, voiceoverUrl, hook, ctaText, scenes } =
     await req.json()
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `video-${projectId}-`))
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `video-${Date.now()}-`))
 
   try {
-    // Download all clips
+    // Download video clips
     const clipPaths: string[] = []
     for (let i = 0; i < clipUrls.length; i++) {
       const clipPath = path.join(tmpDir, `clip_${i}.mp4`)
@@ -38,74 +41,79 @@ export async function POST(req: NextRequest) {
       clipPaths.push(clipPath)
     }
 
-    // Download voiceover
-    const voiceoverPath = path.join(tmpDir, 'voiceover.mp3')
-    await downloadFile(voiceoverUrl, voiceoverPath)
-
-    // Create concat list
+    // Concat list
     const concatListPath = path.join(tmpDir, 'concat.txt')
-    const concatContent = clipPaths.map((p) => `file '${p}'`).join('\n')
-    fs.writeFileSync(concatListPath, concatContent)
+    fs.writeFileSync(concatListPath, clipPaths.map((p) => `file '${p}'`).join('\n'))
 
-    // Assemble with FFmpeg: concat clips + voiceover + text overlays
     const outputPath = path.join(tmpDir, 'output.mp4')
 
-    // macOS system font fallback
-    const fontFile = fs.existsSync('/System/Library/Fonts/Helvetica.ttc')
-      ? '/System/Library/Fonts/Helvetica.ttc'
-      : fs.existsSync('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
-      ? '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-      : ''
+    // Font detection (macOS / Linux)
+    const fontFile = [
+      '/System/Library/Fonts/Helvetica.ttc',
+      '/System/Library/Fonts/Arial.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    ].find((f) => fs.existsSync(f)) || ''
 
     const fontParam = fontFile ? `:fontfile='${fontFile}'` : ''
-    const hookFilter = `drawtext=text='${hook.replace(/'/g, "\\'")}':fontsize=52:fontcolor=white${fontParam}:x=(w-text_w)/2:y=h*0.12:enable='between(t,0,4)':box=1:boxcolor=black@0.4:boxborderw=12`
-    const ctaFilter = `drawtext=text='${ctaText.replace(/'/g, "\\'")}':fontsize=44:fontcolor=#c9a84c${fontParam}:x=(w-text_w)/2:y=h*0.85:enable='gte(t,${scenes.length > 0 ? scenes.reduce((s: number, sc: { duration: number }) => s + sc.duration, 0) - 4 : 10})':box=1:boxcolor=black@0.5:boxborderw=10`
+    const totalDuration = scenes.reduce((s: number, sc: { duration: number }) => s + sc.duration, 0)
+    const safeHook = hook.replace(/'/g, '').replace(/[^\w\s.,!?–—]/g, '').slice(0, 50)
+    const safeCta = ctaText.replace(/'/g, '').replace(/[^\w\s.,!?]/g, '').slice(0, 30)
 
-    const hasVoiceover = voiceoverUrl && fs.existsSync(voiceoverPath)
+    const hookFilter = `drawtext=text='${safeHook}':fontsize=52:fontcolor=white${fontParam}:x=(w-text_w)/2:y=h*0.12:enable='between(t,0,4)':box=1:boxcolor=black@0.5:boxborderw=12`
+    const ctaFilter  = `drawtext=text='${safeCta}':fontsize=44:fontcolor=#c9a84c${fontParam}:x=(w-text_w)/2:y=h*0.85:enable='gte(t,${Math.max(totalDuration - 5, 5)})':box=1:boxcolor=black@0.5:boxborderw=10`
 
-    const ffmpegCmd = hasVoiceover
-      ? [
-          `"${FFMPEG}" -y`,
-          `-f concat -safe 0 -i "${concatListPath}"`,
-          `-i "${voiceoverPath}"`,
-          '-filter_complex',
-          `"[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,${hookFilter},${ctaFilter}[v]"`,
-          '-map "[v]"',
-          '-map 1:a',
-          '-shortest',
-          '-c:v libx264 -preset fast -crf 22',
-          '-c:a aac -b:a 192k',
-          '-movflags +faststart',
-          `"${outputPath}"`,
-        ].join(' ')
-      : [
-          `"${FFMPEG}" -y`,
-          `-f concat -safe 0 -i "${concatListPath}"`,
-          '-filter_complex',
-          `"[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,${hookFilter},${ctaFilter}[v]"`,
-          '-map "[v]"',
-          '-c:v libx264 -preset fast -crf 22',
-          '-movflags +faststart',
-          `"${outputPath}"`,
-        ].join(' ')
+    // Download voiceover only if URL provided
+    let voiceoverPath = ''
+    if (voiceoverUrl) {
+      voiceoverPath = path.join(tmpDir, 'voiceover.mp3')
+      try { await downloadFile(voiceoverUrl, voiceoverPath) } catch { voiceoverPath = '' }
+    }
 
-    await execAsync(ffmpegCmd)
+    const hasAudio = !!voiceoverPath && fs.existsSync(voiceoverPath)
 
-    // Upload to Supabase Storage
+    const ffmpegParts = [
+      `"${FFMPEG}" -y`,
+      `-f concat -safe 0 -i "${concatListPath}"`,
+      hasAudio ? `-i "${voiceoverPath}"` : '',
+      '-filter_complex',
+      `"[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,${hookFilter},${ctaFilter}[v]"`,
+      '-map "[v]"',
+      hasAudio ? '-map 1:a -shortest -c:a aac -b:a 192k' : '',
+      '-c:v libx264 -preset fast -crf 22',
+      '-movflags +faststart',
+      `"${outputPath}"`,
+    ].filter(Boolean).join(' ')
+
+    const { stdout, stderr } = await execAsync(ffmpegParts)
+    if (!fs.existsSync(outputPath)) {
+      console.error('FFmpeg stderr:', stderr)
+      throw new Error('FFmpeg hat keine Ausgabedatei erstellt')
+    }
+
     const videoBuffer = fs.readFileSync(outputPath)
-    const storagePath = `${userId}/${projectId}/${videoId}.mp4`
 
-    await supabase.storage.from('videos').upload(storagePath, videoBuffer, {
-      contentType: 'video/mp4',
-      upsert: true,
-    })
+    // Supabase Storage wenn konfiguriert
+    const supabase = getSupabase()
+    if (supabase) {
+      const storagePath = `${userId}/${projectId}/${videoId}.mp4`
+      await supabase.storage.from('videos').upload(storagePath, videoBuffer, {
+        contentType: 'video/mp4', upsert: true,
+      })
+      const { data: urlData } = supabase.storage.from('videos').getPublicUrl(storagePath)
+      return NextResponse.json({ finalVideoUrl: urlData.publicUrl })
+    }
 
-    const { data: urlData } = supabase.storage.from('videos').getPublicUrl(storagePath)
+    // Lokaler Fallback: in public/videos/ speichern
+    const localDir = path.join(process.cwd(), 'public', 'videos')
+    fs.mkdirSync(localDir, { recursive: true })
+    const filename = `${videoId || Date.now()}.mp4`
+    fs.writeFileSync(path.join(localDir, filename), videoBuffer)
 
-    return NextResponse.json({ finalVideoUrl: urlData.publicUrl })
-  } catch (error) {
-    console.error('Assembly error:', error)
-    return NextResponse.json({ error: 'Video-Montage fehlgeschlagen' }, { status: 500 })
+    return NextResponse.json({ finalVideoUrl: `/videos/${filename}` })
+
+  } catch (error: any) {
+    console.error('Assembly error:', error?.message || error)
+    return NextResponse.json({ error: 'Video-Montage fehlgeschlagen: ' + (error?.message || '') }, { status: 500 })
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   }
