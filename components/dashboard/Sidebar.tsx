@@ -12,7 +12,7 @@ import {
   LogOut,
   Flame,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 const navItems = [
@@ -29,8 +29,12 @@ export function Sidebar() {
   const supabase = createClient()
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/auth')
+    if (isSupabaseConfigured()) {
+      await supabase.auth.signOut()
+      router.push('/auth')
+    } else {
+      router.push('/setup')
+    }
   }
 
   return (

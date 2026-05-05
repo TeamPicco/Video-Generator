@@ -1,29 +1,26 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { runVideoPipeline } from '@/lib/video/pipeline'
 
 export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return new Response('Nicht autorisiert', { status: 401 })
-
   const { projectId, videoId, storyboard, ctaText, ctaLink } = await req.json()
 
+  const userId = 'demo-user'
   const encoder = new TextEncoder()
   const stream = new TransformStream()
   const writer = stream.writable.getWriter()
 
   const send = (data: object) => {
-    writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+    try {
+      writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+    } catch {}
   }
 
-  // Run pipeline async
   runVideoPipeline(
     projectId,
-    videoId,
-    user.id,
+    videoId || `video-${Date.now()}`,
+    userId,
     storyboard,
     ctaText || 'Jetzt reservieren',
     ctaLink || '',

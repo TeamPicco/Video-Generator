@@ -1,12 +1,25 @@
 import { createBrowserClient } from '@supabase/ssr'
 
-export function createClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
-  return createBrowserClient(url, key)
+const PLACEHOLDER_URL = 'https://placeholder.supabase.co'
+const PLACEHOLDER_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder'
+
+function getValidUrl(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!url || !url.startsWith('http')) return PLACEHOLDER_URL
+  return url
 }
 
-export function isSupabaseConfigured() {
+function getValidKey(): string {
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!key || key.includes('your_')) return PLACEHOLDER_KEY
+  return key
+}
+
+export function createClient() {
+  return createBrowserClient(getValidUrl(), getValidKey())
+}
+
+export function isSupabaseConfigured(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  return !!url && !url.includes('your_supabase')
+  return !!url && url.startsWith('http') && !url.includes('placeholder')
 }
