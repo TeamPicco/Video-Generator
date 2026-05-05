@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 .env.local
 .env
+
+# local binaries (zu groß für Git — via scripts/setup-ffmpeg.sh laden)
+/bin/
