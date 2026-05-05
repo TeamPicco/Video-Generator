@@ -61,23 +61,33 @@ export async function POST(req: NextRequest) {
     const hookFilter = `drawtext=text='${hook.replace(/'/g, "\\'")}':fontsize=52:fontcolor=white${fontParam}:x=(w-text_w)/2:y=h*0.12:enable='between(t,0,4)':box=1:boxcolor=black@0.4:boxborderw=12`
     const ctaFilter = `drawtext=text='${ctaText.replace(/'/g, "\\'")}':fontsize=44:fontcolor=#c9a84c${fontParam}:x=(w-text_w)/2:y=h*0.85:enable='gte(t,${scenes.length > 0 ? scenes.reduce((s: number, sc: { duration: number }) => s + sc.duration, 0) - 4 : 10})':box=1:boxcolor=black@0.5:boxborderw=10`
 
-    const ffmpegCmd = [
-      `"${FFMPEG}" -y`,
-      `-f concat -safe 0 -i "${concatListPath}"`,
-      `-i "${voiceoverPath}"`,
-      '-filter_complex',
-      `"[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,${hookFilter},${ctaFilter}[v]"`,
-      '-map "[v]"',
-      '-map 1:a',
-      '-shortest',
-      '-c:v libx264',
-      '-preset fast',
-      '-crf 22',
-      '-c:a aac',
-      '-b:a 192k',
-      '-movflags +faststart',
-      `"${outputPath}"`,
-    ].join(' ')
+    const hasVoiceover = voiceoverUrl && fs.existsSync(voiceoverPath)
+
+    const ffmpegCmd = hasVoiceover
+      ? [
+          `"${FFMPEG}" -y`,
+          `-f concat -safe 0 -i "${concatListPath}"`,
+          `-i "${voiceoverPath}"`,
+          '-filter_complex',
+          `"[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,${hookFilter},${ctaFilter}[v]"`,
+          '-map "[v]"',
+          '-map 1:a',
+          '-shortest',
+          '-c:v libx264 -preset fast -crf 22',
+          '-c:a aac -b:a 192k',
+          '-movflags +faststart',
+          `"${outputPath}"`,
+        ].join(' ')
+      : [
+          `"${FFMPEG}" -y`,
+          `-f concat -safe 0 -i "${concatListPath}"`,
+          '-filter_complex',
+          `"[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,${hookFilter},${ctaFilter}[v]"`,
+          '-map "[v]"',
+          '-c:v libx264 -preset fast -crf 22',
+          '-movflags +faststart',
+          `"${outputPath}"`,
+        ].join(' ')
 
     await execAsync(ffmpegCmd)
 

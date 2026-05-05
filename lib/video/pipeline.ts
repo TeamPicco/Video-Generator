@@ -81,7 +81,7 @@ export async function runVideoPipeline(
     clipUrls.push(url)
   }
 
-  // Step 3: Voice-Over
+  // Step 3: Voice-Over (optional)
   prog('audio', 65, 'Generiere Voice-Over…')
   const voiceoverBuffer = await generateVoiceover(storyboard.voiceoverScript)
 
@@ -89,7 +89,7 @@ export async function runVideoPipeline(
   prog('assembly', 75, 'Schnitt & Montage…')
 
   let voiceoverUrl = ''
-  if (supabase) {
+  if (voiceoverBuffer && supabase) {
     const voiceoverPath = `${userId}/${projectId}/voiceover.mp3`
     await supabase.storage.from('videos').upload(voiceoverPath, voiceoverBuffer, {
       contentType: 'audio/mpeg',
